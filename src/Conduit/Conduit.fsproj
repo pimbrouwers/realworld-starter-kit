@@ -11,8 +11,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Donald" Version="3.0.0" />
-    <PackageReference Include="Falco" Version="2.0.0" />
+    <PackageReference Include="Donald" Version="3.0.*" />
+    <PackageReference Include="Falco" Version="2.0.*" />
   </ItemGroup>
 
 </Project>
