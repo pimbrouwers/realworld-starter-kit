@@ -11,6 +11,13 @@ type NonEmptyString = private NonEmptyString of string with
     static member create (name : string) (str : string) = 
         ConstrainedStrings.createNonEmpty NonEmptyString name str    
 
+[<Struct>]
+type NonEmptyStringOrNull = private NonEmptyStringOrNull of string with    
+    static member value (NonEmptyStringOrNull str) = str
+    
+    static member create (name : string) (str : string) = 
+        ConstrainedStrings.createNonEmptyOrNull NonEmptyStringOrNull name str    
+
 type User = 
     {
         UserId     : int
@@ -22,18 +29,7 @@ type User =
         Salt       : string
         Iterations : int 
     }
-    static member fromDataReader (rd : IDataReader) =
-        {   
-            UserId     = rd.GetInt32("user_id")
-            Email      = rd.GetString("email")
-            Username   = rd.GetString("username")
-            Bio        = rd.GetString("bio")
-            Image      = rd.GetString("image")
-            Password   = rd.GetString("password")
-            Salt       = rd.GetString("salt")
-            Iterations = rd.GetInt32("iterations")
-        }
-
+    
 type NewUser =
     {
         Email      : string        

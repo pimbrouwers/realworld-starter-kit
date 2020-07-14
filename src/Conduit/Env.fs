@@ -47,5 +47,6 @@ let developerMode =
 let config = 
     ConfigurationBuilder()
         .SetBasePath(dir)
-        .AddJsonFile("appsettings.json")        
+        .AddJsonFile("appsettings.json")
+        .AddJsonFile("appsettings.Development.json")
         .Build()

@@ -2,32 +2,51 @@ module Conduit.Server
 
 open System
 open System.Text
+open System.Threading.Tasks
 open Donald
 open Falco    
 open Falco.Host
-open Microsoft.AspNetCore.Authentication.JwtBearer
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting    
 open Microsoft.Extensions.DependencyInjection  
 open Microsoft.Extensions.Logging
 open Microsoft.IdentityModel.Tokens
 open Jwt
+open Microsoft.AspNetCore.Authentication.JwtBearer
 
 type IServiceCollection with
-    member this.AddJwtAuthentication (JwtSecret jwtSecret : JwtSecret) =                 
-        this.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-                .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, fun o ->                                        
-                    o.SaveToken <- true 
-                    
-                    let key = Encoding.ASCII.GetBytes jwtSecret
-                    let validationParams = TokenValidationParameters()                    
-                    validationParams.IssuerSigningKey <- SymmetricSecurityKey(key)
-                    validationParams.ValidateIssuerSigningKey <- true
-                    validationParams.ValidateIssuer <- false
-                    validationParams.ValidateAudience <- false
+    member this.AddJwtAuthentication  (JwtSecret jwtSecret : JwtSecret) =                 
+        this.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)               
+            .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, fun jwt ->                                  
+                let events = JwtBearerEvents()
+                
+                events.OnMessageReceived <- 
+                    fun ctx ->
+                        let authHeader = ctx.HttpContext.Request.Headers.["Authorization"].ToArray()
+                        match Array.tryHead authHeader with
+                        | None   -> ()
+                        | Some header -> 
+                            match header.StartsWith(jwtHeaderPrefix, StringComparison.OrdinalIgnoreCase) with
+                            | false -> ()
+                            | true  ->
+                                ctx.Token <- header.Substring(jwtHeaderPrefix.Length).Trim()
 
-                    o.TokenValidationParameters <- validationParams)                
-                |> ignore
+                        Task.CompletedTask
+
+                jwt.Events <- events
+
+                jwt.SaveToken <- true 
+                                    
+                let key = Encoding.ASCII.GetBytes jwtSecret
+                let validationParams = TokenValidationParameters()             
+                    
+                validationParams.IssuerSigningKey <- SymmetricSecurityKey(key)
+                validationParams.ValidateIssuerSigningKey <- true
+                validationParams.ValidateIssuer <- false
+                validationParams.ValidateAudience <- false
+                    
+                jwt.TokenValidationParameters <- validationParams)                
+            |> ignore
         this
 
 let handleException 

@@ -1,11 +1,12 @@
 module Conduit.Program
 
 open System.Data
+open System.Data.SqlClient
 open Donald
 open Falco
 open Microsoft.Extensions.Configuration
-open Microsoft.Data.Sqlite
 open Jwt
+open Middleware
 
 [<EntryPoint>]
 let main args =    
@@ -25,7 +26,7 @@ let main args =
 
         let connectionFactory : DbConnectionFactory =         
             fun () -> 
-                let conn = new SqliteConnection(connectionString) 
+                let conn = new SqlConnection(connectionString) 
                 conn.Open()
                 conn :> IDbConnection        
         
@@ -37,7 +38,10 @@ let main args =
                 (JwtSecret jwtSecret)
                 jwtProvider
                 connectionFactory)
-            [                    
+            [           
+                get  "/api/user"        (ifAuthenticated User.handleDetails)
+                put  "/api/user"        (ifAuthenticated User.handleUpdate)
+                post "/api/users"       User.handleRegister
                 post "/api/users/login" User.handleLogin
             ]
         0

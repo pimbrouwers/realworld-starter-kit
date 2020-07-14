@@ -16,9 +16,9 @@ let generateToken
     let tokenHandler = JwtSecurityTokenHandler()
     
     let keyBytes = Encoding.ASCII.GetBytes(key)    
+    let signingCreds = SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256Signature)
     let identity = ClaimsIdentity(claims)
     let expiryDate = DateTime.UtcNow.AddMinutes(expirationMinutes)
-    let signingCreds = SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256Signature)
     
     SecurityTokenDescriptor(Subject = identity, Expires = Nullable(expiryDate), SigningCredentials = signingCreds)
     |> tokenHandler.CreateToken
