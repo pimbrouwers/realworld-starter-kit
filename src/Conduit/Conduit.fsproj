@@ -5,14 +5,30 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="TaskResult.fs" />
     <Compile Include="Common.fs" />
+    <Compile Include="Domain.fs" />
+    <Compile Include="Jwt.fs" />
+    <Compile Include="Response.fs" />
+    <Compile Include="User.fs" />
+    <Compile Include="Profile.fs" />
+    <Compile Include="Tag.fs" />
+    <Compile Include="Article.fs" />
+    <Compile Include="Env.fs" />
     <Compile Include="Server.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Donald" Version="3.0.*" />
-    <PackageReference Include="Falco" Version="2.0.*" />
+    <PackageReference Include="Donald" Version="3.0.0" />
+    <PackageReference Include="Falco" Version="2.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="3.1.5" />
+    <PackageReference Include="Microsoft.Data.SQLite" Version="3.1.5" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.7.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="4.7.2" />
   </ItemGroup>
 
 </Project>
