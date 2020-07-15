@@ -14,12 +14,34 @@ open Microsoft.IdentityModel.Tokens
 open Jwt
 open Microsoft.AspNetCore.Authentication.JwtBearer
 
+let handleException 
+    (DeveloperMode developerMode : DeveloperMode) : ExceptionHandler =    
+    fun (ex : Exception)
+        (log : ILogger) ->
+        let logMessage = 
+            match developerMode with
+            | true  -> sprintf "Server error: %s\n\n%s" ex.Message ex.StackTrace
+            | false -> "Server Error"
+        
+        log.Log(LogLevel.Error, logMessage)        
+        
+        Response.withStatusCode 500
+        >> Response.ofPlainText logMessage
+        
+let configureLogging 
+    (DeveloperMode developerMode : DeveloperMode)
+    (log : ILoggingBuilder) =        
+    match developerMode with
+    | true  -> LogLevel.Information
+    | false -> LogLevel.Error
+    |> log.SetMinimumLevel
+    |> ignore
+
 type IServiceCollection with
-    member this.AddJwtAuthentication  (JwtSecret jwtSecret : JwtSecret) =                 
+    member this.AddJwtAuthentication (JwtSecret jwtSecret : JwtSecret) =                 
         this.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)               
             .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, fun jwt ->                                  
-                let events = JwtBearerEvents()
-                
+                let events = JwtBearerEvents()                
                 events.OnMessageReceived <- 
                     fun ctx ->
                         let authHeader = ctx.HttpContext.Request.Headers.["Authorization"].ToArray()
@@ -48,33 +70,6 @@ type IServiceCollection with
                 jwt.TokenValidationParameters <- validationParams)                
             |> ignore
         this
-
-let handleException 
-    (DeveloperMode developerMode : DeveloperMode) : ExceptionHandler =    
-    fun (ex : Exception)
-        (log : ILogger) ->
-        let logMessage = 
-            match developerMode with
-            | true  -> sprintf "Server error: %s\n\n%s" ex.Message ex.StackTrace
-            | false -> "Server Error"
-        
-        log.Log(LogLevel.Error, logMessage)        
-        
-        Response.withStatusCode 500
-        >> Response.ofPlainText logMessage
-    
-let handleNotFound : HttpHandler = 
-    Response.withStatusCode 404
-    >> Response.ofPlainText "Not found"
-    
-let configureLogging 
-    (DeveloperMode developerMode : DeveloperMode)
-    (log : ILoggingBuilder) =        
-    match developerMode with
-    | true  -> LogLevel.Information
-    | false -> LogLevel.Error
-    |> log.SetMinimumLevel
-    |> ignore
 
 let configureServices 
     (jwtSecret : JwtSecret)

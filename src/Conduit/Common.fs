@@ -2,6 +2,8 @@
 
 [<AutoOpen>]
 module Common =    
+    let jwtHeaderPrefix = "Token "
+
     type ValidationErrors = ValidationErrors of string list
 
     type ValidationResult<'a> =
@@ -36,7 +38,6 @@ module Common =
     let (<!>) = ValidationResult.map
     let (<*>) = ValidationResult.apply
 
-    let jwtHeaderPrefix = "Token "
 
 module StringUtils =
     open System 

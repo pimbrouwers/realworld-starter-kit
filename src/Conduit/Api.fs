@@ -11,16 +11,6 @@ type ServiceHandler<'TIn, 'TOut, 'TError> = 'TIn -> TaskResult<'TOut, 'TError>
 type ServiceResultProcessor<'TOut, 'TOutNew> = 'TOut -> 'TOutNew
 type ServiceErrorProcessor<'TError> = 'TError -> string list
 
-type ApiError =
-    {
-        Body : string list
-    }
-
-type ApiErrorDto =
-    {
-        Errors : ApiError
-    }
-
 type UserTokenModel =
     {
         UserId : int
@@ -32,10 +22,8 @@ module Request =
 
     let getHeader 
         (headerName : string)
-        (ctx : HttpContext) : string option =
-        match StringParser.tryParseWith ctx.Request.Headers.TryGetValue headerName with
-        | None -> None
-        | Some headerValues -> Some (headerValues.ToArray() |> strJoin "; ")
+        (ctx : HttpContext) : string[] =
+        ctx.Request.Headers.[headerName].ToArray()
 
 module Response =
     open System.Text.Json
@@ -51,21 +39,25 @@ module Principal =
     let getSid
         (ctx : HttpContext) : int option =
         let i = ctx.User.Identity :?> ClaimsIdentity
-        match i.FindFirst(ClaimTypes.Sid).Value with
+        match i.FindFirst(ClaimTypes.Sid). with
         | null -> ""
         | v -> v
         |> StringParser.parseInt
          
 
 let handleServiceError errors : HttpHandler =    
-    {
-        Errors = { Body = errors }
-    }
+    {|
+        Errors = {| Body = errors |}
+    |}
     |> Response.ofJsonCamelCase 
 
 let handleUnauthorized =
     Response.withStatusCode 401
     >> handleServiceError [ "Not authorized" ]
+
+let handleNotFound : HttpHandler = 
+    Response.withStatusCode 404
+    >> Response.ofPlainText "Not found"
 
 let handleBindJson<'a> (handler : 'a -> HttpHandler) =
     fun ctx -> task {
@@ -82,14 +74,15 @@ let handleBindJson<'a> (handler : 'a -> HttpHandler) =
         return! respondWith ctx
     }
 
-let handleBindToken (handler : UserTokenModel -> HttpHandler) : HttpHandler =
+let handleBindToken 
+    (handler : UserTokenModel -> HttpHandler) : HttpHandler =
     fun ctx ->
-        let token = Request.getHeader "Authorization" ctx
         let userId = Principal.getSid ctx        
+        let token = Request.getHeader "Authorization" ctx
         
         let respondWith =
-            match token, userId with
-            | Some token, Some userId ->                            
+            match userId , token with
+            | Some userId, [|token|] ->                            
                 { 
                     UserId = userId
                     Token = token.Substring(jwtHeaderPrefix.Length)
@@ -101,7 +94,7 @@ let handleBindToken (handler : UserTokenModel -> HttpHandler) : HttpHandler =
 
         respondWith ctx
 
-let handleService<'TIn, 'TResult, 'TError, 'TOutNew>  
+let handleService
     (serviceHandler : ServiceHandler<'TIn, 'TResult, 'TError>)
     (resultProcessor : ServiceResultProcessor<'TResult, 'TOutNew>)
     (errorProcessor : ServiceErrorProcessor<'TError>)
