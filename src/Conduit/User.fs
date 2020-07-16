@@ -5,15 +5,7 @@ open Falco
 open Falco.StringUtils
 open FSharp.Control.Tasks
 open Jwt
-
-module User =
-    open System.Security.Claims
-
-    let toClaims (user : User) =
-        [|
-            Claim(ClaimTypes.Sid, user.UserId.ToString())
-            Claim(ClaimTypes.NameIdentifier, user.Username)            
-        |]
+open Validation
 
 type UserModel =
     {
@@ -23,7 +15,7 @@ type UserModel =
         Bio      : string
         Image    : string
     }
-    static member fromUser (token : string) (user : User) =
+    static member fromApiUser (token : string) (user : ApiUser) =
         {
             Email    = user.Email
             Token    = token
@@ -32,34 +24,42 @@ type UserModel =
             Image    = user.Image
         }
 
-module Service =
+[<CLIMutable>]
+type UserDto<'a> =
+    {
+        User : 'a
+    }
+    static member create user = { User = user }
+
+module Service =    
     open System.Security.Claims
     open System.Threading.Tasks
     open Falco.Security
-    open TaskResult
-
-    [<CLIMutable>]
-    type UserDto<'a> =
-        {
-            User : 'a
-        }
-        static member create user = { User = user }
-                
+            
     type GenerateJwt =
         Claim[] -> string
+    
+    let getClaimsForUser (user : ApiUser) =
+        [|
+            Claim(ClaimTypes.Sid, user.ApiUserId.ToString())
+            Claim(ClaimTypes.NameIdentifier, user.Username)            
+        |]
 
-    module Details =
+    module UserDetails =
         // Dependencies
         type FindUserById =
-            int -> Task<User option>
+            int -> Task<ApiUser option>
 
         // Workflow
-        type UserDetailsError = InvalidUser
+        type UserDetailsError = 
+            InvalidUser
             
-        type UserDetailsHandler = ServiceHandler<UserTokenModel, UserModel, UserDetailsError>
+        type UserDetailsHandler = 
+            ServiceHandler<UserTokenModel, UserModel, UserDetailsError>
         
         // Steps
-        type FindUser = FindUserById -> UserTokenModel -> TaskResult<User, UserDetailsError>
+        type FindUser = 
+            FindUserById -> UserTokenModel -> TaskResult<ApiUser, UserDetailsError>
 
         let findUser : FindUser =
             fun findUserById model -> task {
@@ -75,10 +75,10 @@ module Service =
             fun model ->
                 model
                 |> findUser findUserById
-                |> TaskResult.bind (UserModel.fromUser model.Token >> TaskResult.retn)
+                |> TaskResult.bind (UserModel.fromApiUser model.Token >> TaskResult.retn)
                 
 
-    module LogIn =        
+    module UserLogIn =        
         // Input
         [<CLIMutable>]
         type InputModel =
@@ -100,12 +100,12 @@ module Service =
         type LoginAttemptWithUser =
             {
                 LoginAttempt : LoginAttempt
-                User         : User
+                User         : ApiUser
             }
 
         // Dependencies
         type FindUserByEmail =
-            string -> Task<User option>
+            string -> Task<ApiUser option>
 
         // Steps
         type UserLoginError =
@@ -166,11 +166,11 @@ module Service =
 
                 | true -> 
                     let token =
-                        User.toClaims loginAttempt.User
+                        getClaimsForUser loginAttempt.User
                         |> generateJwt
 
                     loginAttempt.User 
-                    |> UserModel.fromUser token
+                    |> UserModel.fromApiUser token
                     |> Ok
                 
         let handle
@@ -182,7 +182,7 @@ module Service =
                 |> TaskResult.bind (resolveUser findUserByEmail)
                 |> TaskResult.bind (verifyAttempt generateJwt >> TaskResult.ofResult)
 
-    module Register =
+    module UserRegister =
         // Input
         [<CLIMutable>]
         type InputModel = 
@@ -210,7 +210,7 @@ module Service =
 
         // Dependencies
         type CreateUser =   
-            NewUser -> TaskResult<int, string>
+            NewApiUser -> TaskResult<int, string>
 
         // Workflow
         type UserRegisterError =
@@ -225,10 +225,10 @@ module Service =
             InputModel -> Result<ValidatedInputModel, UserRegisterError>
 
         type RegisterUser =
-            CreateUser -> ValidatedInputModel -> TaskResult<User, UserRegisterError>
+            CreateUser -> ValidatedInputModel -> TaskResult<ApiUser, UserRegisterError>
 
         type VerifyUser =
-            GenerateJwt -> User -> UserModel
+            GenerateJwt -> ApiUser -> UserModel
 
         // Implementation
         let validateInputModel : ValidateInputModel =
@@ -263,7 +263,7 @@ module Service =
 
                     | Ok userId ->
                         Ok {
-                            UserId     = userId
+                            ApiUserId     = userId
                             Email      = user.Email
                             Username   = user.Username
                             Bio        = null
@@ -277,11 +277,11 @@ module Service =
         let verifyUser : VerifyUser =
             fun generateJwt user ->                
                 let token =
-                    User.toClaims user
+                    getClaimsForUser user
                     |> generateJwt
                 
                 user
-                |> UserModel.fromUser token
+                |> UserModel.fromApiUser token
 
         let handle 
             (createUser : CreateUser)
@@ -293,7 +293,7 @@ module Service =
                 |> TaskResult.bind (registerUser createUser)
                 |> TaskResult.bind (verifyUser generateJwt >> TaskResult.retn)
      
-    module Update =
+    module UserUpdate =
         // Input
         [<CLIMutable>]
         type InputModel =
@@ -330,15 +330,15 @@ module Service =
         type ResolvedInputModel =
             {
                 Input : ValidatedInputModel
-                User  : User
+                User  : ApiUser
             }
 
         // Dependencies
         type FindUserById =
-            int -> Task<User option>
+            int -> Task<ApiUser option>
 
         type UpdateUser =
-            User -> TaskResult<unit, string>
+            ApiUser -> TaskResult<unit, string>
 
         // Workflow
         type UserUpdateError =
@@ -404,7 +404,7 @@ module Service =
                 return 
                     match updateResult with
                     | Error error -> Error (UpdateError error)
-                    | Ok () -> Ok (UserModel.fromUser token user)
+                    | Ok () -> Ok (UserModel.fromApiUser token user)
             }
 
         let handle 
@@ -421,20 +421,20 @@ module Db =
     open System
     open System.Data
     
-    let fromDataReader (rd : IDataReader) =
-        {   
-            UserId     = rd.GetInt32("api_user_id")
-            Email      = rd.GetString("email")
-            Username   = rd.GetString("username")
-            Bio        = rd.GetString("bio")
-            Image      = rd.GetString("image")
-            Password   = rd.GetString("password")
-            Salt       = rd.GetString("salt")
-            Iterations = rd.GetInt32("iterations")
-        }
-
     module User =  
-        let create (conn : IDbConnection) (user : NewUser) = task {
+        let fromDataReader (rd : IDataReader) =
+            {   
+                ApiUserId     = rd.GetInt32("api_user_id")
+                Email      = rd.GetString("email")
+                Username   = rd.GetString("username")
+                Bio        = rd.GetString("bio")
+                Image      = rd.GetString("image")
+                Password   = rd.GetString("password")
+                Salt       = rd.GetString("salt")
+                Iterations = rd.GetInt32("iterations")
+            }
+
+        let create (conn : IDbConnection) (user : NewApiUser) = task {
             let! result =
                 tryScalarAsync
                     "INSERT  api_user (email, username, password, salt, iterations)
@@ -496,7 +496,7 @@ module Db =
                 fromDataReader
                 conn
         
-        let update (conn : IDbConnection) (user : User) = task {
+        let update (conn : IDbConnection) (user : ApiUser) = task {
             let! result =
                 tryExecAsync
                     "UPDATE  api_user 
@@ -507,7 +507,7 @@ module Db =
                            , image = @image
                      WHERE   api_user_id = @user_id"
                     [
-                        newParam "user_id"  (SqlType.Int user.UserId)
+                        newParam "user_id"  (SqlType.Int user.ApiUserId)
                         newParam "email"    (SqlType.String user.Email)
                         newParam "username" (SqlType.String user.Username)
                         newParam "password" (SqlType.String user.Password)
@@ -530,11 +530,11 @@ let handleDetails : HttpHandler =
             use conn = createConn connectionFactory
 
             let serviceHandler = 
-                Details.handle (Db.User.tryGet conn)
+                UserDetails.handle (Db.User.tryGet conn)
                 
             let errorProcessor error =
                 match error with
-                | Details.InvalidUser -> ["Could not find user"]
+                | UserDetails.InvalidUser -> ["Could not find user"]
 
             return!
                 handleService
@@ -555,11 +555,11 @@ let handleLogin : HttpHandler =
             use conn = createConn connectionFactory
 
             let serviceHandler = 
-                LogIn.handle (Db.User.tryFind conn) jwtProvider
+                UserLogIn.handle (Db.User.tryFind conn) jwtProvider
 
             let errorProcessor error = 
                 match error with
-                | LogIn.InvalidInput (ValidationErrors errors) -> 
+                | UserLogIn.InvalidInput (ValidationErrors errors) -> 
                     errors
 
                 | _ -> 
@@ -574,7 +574,7 @@ let handleLogin : HttpHandler =
                     ctx
         }
 
-    handleBindJson<UserDto<LogIn.InputModel>> handleLoginInput
+    handleBindJson<UserDto<UserLogIn.InputModel>> handleLoginInput
 
 let handleRegister : HttpHandler = 
     let handleRegisterInput inputModel : HttpHandler =
@@ -583,13 +583,13 @@ let handleRegister : HttpHandler =
             let connectionFactory = ctx.GetService<DbConnectionFactory>()
             use conn = createConn connectionFactory
 
-            let serviceHandler = Register.handle (Db.User.create conn) jwtProvider
+            let serviceHandler = UserRegister.handle (Db.User.create conn) jwtProvider
             let errorProcessor error = 
                 match error with
-                | Register.InvalidInput (ValidationErrors errors) -> 
+                | UserRegister.InvalidInput (ValidationErrors errors) -> 
                     errors
 
-                | Register.CreateError error -> 
+                | UserRegister.CreateError error -> 
                     [error]
                 
             return! 
@@ -601,7 +601,7 @@ let handleRegister : HttpHandler =
                     ctx            
         }
 
-    handleBindJson<UserDto<Register.InputModel>> handleRegisterInput
+    handleBindJson<UserDto<UserRegister.InputModel>> handleRegisterInput
 
 let handleUpdate : HttpHandler =    
     let handleUpdateInput userToken inputModel : HttpHandler =
@@ -610,13 +610,13 @@ let handleUpdate : HttpHandler =
             use conn = createConn connectionFactory
 
             let serviceHandler = 
-                Update.handle (Db.User.tryGet conn) (Db.User.update conn) userToken
+                UserUpdate.handle (Db.User.tryGet conn) (Db.User.update conn) userToken
                 
             let errorProcessor error =
                 match error with
-                | Update.InvalidInput (ValidationErrors errors) -> errors
-                | Update.InvalidUser -> ["Could not find user"]
-                | Update.UpdateError error -> [error]
+                | UserUpdate.InvalidInput (ValidationErrors errors) -> errors
+                | UserUpdate.InvalidUser -> ["Could not find user"]
+                | UserUpdate.UpdateError error -> [error]
 
             return!
                 handleService
@@ -628,6 +628,6 @@ let handleUpdate : HttpHandler =
         }
 
     let handleTokenBound userToken : HttpHandler =
-        handleBindJson<UserDto<Update.InputModel>> (handleUpdateInput userToken)
+        handleBindJson<UserDto<UserUpdate.InputModel>> (handleUpdateInput userToken)
 
     handleBindToken handleTokenBound

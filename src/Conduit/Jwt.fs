@@ -9,6 +9,8 @@ open Microsoft.IdentityModel.Tokens
 type JwtProvider =
     Claim[] -> string
 
+let jwtHeaderPrefix = "Token "
+
 let generateToken     
     (key : string)    
     (expirationMinutes : float)

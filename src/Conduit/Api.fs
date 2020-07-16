@@ -4,8 +4,8 @@ module Conduit.Api
 open System.Security.Claims
 open Falco
 open FSharp.Control.Tasks
-open StringUtils
 open TaskResult
+open Jwt
 
 type ServiceHandler<'TIn, 'TOut, 'TError> = 'TIn -> TaskResult<'TOut, 'TError>
 type ServiceResultProcessor<'TOut, 'TOutNew> = 'TOut -> 'TOutNew
@@ -39,7 +39,7 @@ module Principal =
     let getSid
         (ctx : HttpContext) : int option =
         let i = ctx.User.Identity :?> ClaimsIdentity
-        match i.FindFirst(ClaimTypes.Sid). with
+        match i.FindFirst(ClaimTypes.Sid).Value with
         | null -> ""
         | v -> v
         |> StringParser.parseInt
@@ -74,25 +74,37 @@ let handleBindJson<'a> (handler : 'a -> HttpHandler) =
         return! respondWith ctx
     }
 
-let handleBindToken 
-    (handler : UserTokenModel -> HttpHandler) : HttpHandler =
+let handleBindTokenOption
+    (handler : UserTokenModel option -> HttpHandler) : HttpHandler =
     fun ctx ->
         let userId = Principal.getSid ctx        
         let token = Request.getHeader "Authorization" ctx
         
-        let respondWith =
+        let model =
             match userId , token with
             | Some userId, [|token|] ->                            
-                { 
+                Some { 
                     UserId = userId
                     Token = token.Substring(jwtHeaderPrefix.Length)
                 }
-                |> handler
             
-            | _ ->
-                handleUnauthorized
+            | _ -> None
+                
 
-        respondWith ctx
+        (model |> handler) ctx
+
+let handleBindToken 
+    (handler : UserTokenModel -> HttpHandler) : HttpHandler =    
+    let tokenHandler userToken : HttpHandler =
+        fun ctx ->                        
+            let respondWith =
+                match userToken with
+                | Some userToken -> userToken |> handler            
+                | _              -> handleUnauthorized
+
+            respondWith ctx
+
+    handleBindTokenOption tokenHandler
 
 let handleService
     (serviceHandler : ServiceHandler<'TIn, 'TResult, 'TError>)

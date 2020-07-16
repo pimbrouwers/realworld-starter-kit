@@ -43,6 +43,8 @@ let main args =
                 put  "/api/user"        (ifAuthenticated User.handleUpdate)
                 post "/api/users"       User.handleRegister
                 post "/api/users/login" User.handleLogin
+
+                get  "/api/profiles/{username:required}" Profile.handleDetails
             ]
         0
     with

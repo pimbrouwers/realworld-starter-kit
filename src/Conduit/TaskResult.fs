@@ -1,4 +1,5 @@
-﻿module Conduit.TaskResult 
+﻿[<AutoOpen>]
+module Conduit.TaskResult 
 
 open System.Threading.Tasks
 open FSharp.Control.Tasks
