@@ -29,3 +29,9 @@ type Follow =
         ApiUserId       : int
         FollowApiUserId : int
     }
+
+type NewFollow =
+    {
+        ApiUserId      : int
+        FollowUsername : string
+    }

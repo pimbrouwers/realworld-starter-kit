@@ -44,6 +44,13 @@ module Principal =
         | v -> v
         |> StringParser.parseInt
          
+module DbResult = 
+    open Donald
+
+    let toResult (dbResult : DbResult<'a>) : Result<'a, string> =
+        match dbResult with
+        | DbError error   -> Error error.Message
+        | DbResult result -> Ok result
 
 let handleServiceError errors : HttpHandler =    
     {|

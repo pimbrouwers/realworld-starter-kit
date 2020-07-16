@@ -44,7 +44,8 @@ let main args =
                 post "/api/users"       User.handleRegister
                 post "/api/users/login" User.handleLogin
 
-                get  "/api/profiles/{username:required}" Profile.handleDetails
+                get  "/api/profiles/{username:required}"        Profile.handleDetails
+                post "/api/profiles/{username:required}/follow" (ifAuthenticated Profile.handleFollow)
             ]
         0
     with
