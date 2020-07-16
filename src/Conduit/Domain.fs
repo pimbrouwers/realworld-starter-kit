@@ -35,3 +35,10 @@ type NewFollow =
         ApiUserId      : int
         FollowUsername : string
     }
+
+type RemoveFollow = 
+    {
+        ApiUserId      : int
+        UnfollowUsername : string
+    }
+    

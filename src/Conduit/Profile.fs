@@ -22,7 +22,7 @@ type ProfileDto =
 module Service = 
     open System.Threading.Tasks
 
-    module ProfileDetails =   
+    module ProfileDetails =           
         // Input 
         type InputModel =
             {
@@ -64,13 +64,15 @@ module Service =
                 |> findUser findProfileByUsername
 
 
+    // Input
+    type FollowInputModel =
+        {
+            Username     : string
+            CurrentUser  : UserTokenModel
+        }
+
     module ProfileFollow =
-        // Input
-        type InputModel =
-            {
-                Username     : string
-                CurrentUser  : UserTokenModel
-            }
+        
 
         // Dependencies
         type CreateFollow =
@@ -85,14 +87,14 @@ module Service =
             | InvalidUser 
 
         type ProfileFollowHandler = 
-            ServiceHandler<InputModel, ProfileModel, ProfileFollowError>
+            ServiceHandler<FollowInputModel, ProfileModel, ProfileFollowError>
 
         // Steps
         type FollowProfile =
-            CreateFollow -> InputModel -> TaskResult<InputModel, ProfileFollowError>
+            CreateFollow -> FollowInputModel -> TaskResult<FollowInputModel, ProfileFollowError>
 
         type FindProfile =
-            FindProfileByUsername -> InputModel -> TaskResult<ProfileModel, ProfileFollowError>
+            FindProfileByUsername -> FollowInputModel -> TaskResult<ProfileModel, ProfileFollowError>
 
         // Implementation
         let followProfile : FollowProfile =
@@ -125,6 +127,59 @@ module Service =
                 |> followProfile createFollow 
                 |> TaskResult.bind (findProfile findProfileByUserId)
 
+    module ProfileUnfollow =
+        // Dependencies
+        type DeleteFollow =
+            RemoveFollow -> TaskResult<unit, string>
+
+        type FindProfileByUsername =
+            int -> string -> Task<ProfileModel option>
+
+        // Workflow
+        type ProfileUnfollowError =
+            | DeleteError of string
+            | InvalidUser
+
+        type ProfileUnfollowHandler =
+            ServiceHandler<FollowInputModel, ProfileModel, ProfileUnfollowError>
+
+        // Steps
+        type UnfollowProfile =
+            DeleteFollow -> FollowInputModel -> TaskResult<FollowInputModel, ProfileUnfollowError>
+
+        type FindProfile =
+            FindProfileByUsername -> FollowInputModel -> TaskResult<ProfileModel, ProfileUnfollowError>
+
+        // Implementation
+        let unfollowProfile : UnfollowProfile =
+            fun deleteFollow model -> task {
+                let! result = 
+                    deleteFollow 
+                        { ApiUserId = model.CurrentUser.UserId; UnfollowUsername = model.Username }
+
+                return
+                    match result with
+                    | Error error -> Error (DeleteError error)
+                    | Ok () -> Ok model
+            }
+
+        let findProfile : FindProfile =
+            fun findProfileByUsername model -> task {
+                let! profile = findProfileByUsername model.CurrentUser.UserId model.Username
+                return 
+                    match profile with
+                    | None         -> Error InvalidUser
+                    | Some profile -> Ok profile
+            }
+
+        let handle 
+            (deleteFollow : DeleteFollow)
+            (findProfileByUserId : FindProfileByUsername) : ProfileUnfollowHandler =
+            fun model ->
+                model
+                |> unfollowProfile deleteFollow
+                |> TaskResult.bind (findProfile findProfileByUserId)
+
 module Db =
     open System.Data
 
@@ -136,7 +191,6 @@ module Db =
                      SELECT  @api_user_id, api_user_id
                      FROM    api_user
                      WHERE   username = @follow_username
-                             AND api_user_id <> @api_user_id
                              AND api_user_id NOT IN (
                                 SELECT  follow_api_user_id 
                                 FROM    follow 
@@ -150,16 +204,18 @@ module Db =
             return DbResult.toResult result
         }
 
-        let delete (conn : IDbConnection) (follow : Follow) = task {
+        let delete (conn : IDbConnection) (follow : RemoveFollow) = task {
             let! result = 
                 tryExecAsync
-                    "DELETE  
+                    "DELETE  follow
                      FROM    follow
-                     WHERE   api_user_id = @api_user_id
-                             AND follow_api_user_id = @follow_api_user_id);"
+                             JOIN api_user 
+                               ON api_user.api_user_id = follow.follow_api_user_id
+                               AND api_user.username = @unfollow_username
+                     WHERE   follow.api_user_id = @api_user_id;"
                     [
                         newParam "api_user_id" (SqlType.Int follow.ApiUserId)
-                        newParam "follow_api_user_id" (SqlType.Int follow.FollowApiUserId)
+                        newParam "unfollow_username" (SqlType.String follow.UnfollowUsername)
                     ]
                     conn
 
@@ -271,6 +327,38 @@ let handleFollow : HttpHandler =
                 match error with
                 | ProfileFollow.CreateError error -> [error]
                 | ProfileFollow.InvalidUser -> ["Could not find user"]
+
+            return!
+                handleService
+                    serviceHandler
+                    ProfileDto.create
+                    errorProcessor
+                    { Username = username; CurrentUser = userTokenModel }
+                    ctx
+        }
+
+    handleBindToken handleFollowInput
+
+let handleUnfollow : HttpHandler =
+    let handleFollowInput userTokenModel : HttpHandler =
+        fun ctx -> task {
+            let connectionFactory = ctx.GetService<DbConnectionFactory>()
+            use conn = createConn connectionFactory
+
+            let username = 
+                ctx 
+                |> Request.tryGetRouteValue "username" 
+                |> Option.defaultValue ""
+
+            let serviceHandler =
+                ProfileUnfollow.handle 
+                    (Db.Follow.delete conn) 
+                    (fun userId username -> Db.Profile.tryFind conn (Some userId) username)
+
+            let errorProcessor error =
+                match error with
+                | ProfileUnfollow.DeleteError error -> [error]
+                | ProfileUnfollow.InvalidUser -> ["Could not find user"]
 
             return!
                 handleService
