@@ -424,7 +424,7 @@ module Db =
     module User =  
         let fromDataReader (rd : IDataReader) =
             {   
-                ApiUserId     = rd.GetInt32("api_user_id")
+                ApiUserId  = rd.GetInt32("api_user_id")
                 Email      = rd.GetString("email")
                 Username   = rd.GetString("username")
                 Bio        = rd.GetString("bio")
